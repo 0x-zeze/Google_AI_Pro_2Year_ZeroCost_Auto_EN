@@ -11,4 +11,9 @@ echo   Launching Web Console (http://127.0.0.1:8765) ...
 echo ======================================================================
 start "" "http://127.0.0.1:8765"
 python app.py
+if errorlevel 1 (
+    echo.
+    echo App exited with an error. Press any key to inspect...
+    pause
+)
 pause
