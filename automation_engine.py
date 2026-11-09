@@ -1217,8 +1217,21 @@ class GoogleUltraAutomator:
                 self.log(f"[{step_tag}] 切换付款卡提示: {pm_err}")
 
         # Strict zero-cost protection when running 2-year Pro stacking
-        if "ultra" not in step_tag.lower() and "0.00" not in clean_txt and "免费" not in clean_txt and "Free" not in clean_txt:
-            self.last_subscribe_error = f"零消费保护拦截：弹窗未显示 0.00 免费试用 ({clean_txt[:180]})"
+        clean_lower = clean_txt.lower()
+        is_zero_cost = (
+            "0.00" in clean_txt
+            or "免费" in clean_txt
+            or "free" in clean_lower
+            or "2028" in clean_txt
+            or "upcoming charges" in clean_lower
+        )
+        has_immediate_charge = (
+            any(k in clean_lower for k in ("due today", "total today", "charged today", "应付金额"))
+            and "0.00" not in clean_txt
+            and "$0" not in clean_txt
+        )
+        if "ultra" not in step_tag.lower() and (not is_zero_cost or has_immediate_charge):
+            self.last_subscribe_error = f"Zero-cost protection intercept: modal did not confirm $0.00 trial ({clean_txt[:180]})"
             self.log(f"❌ [{step_tag}] {self.last_subscribe_error}")
             return False
 
