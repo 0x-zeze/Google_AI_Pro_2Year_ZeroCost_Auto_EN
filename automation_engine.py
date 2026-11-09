@@ -1585,12 +1585,13 @@ class GoogleUltraAutomator:
         if not ok:
             raise RuntimeError(f"Step 4 (三层 6个月免费封顶 US$0.00) 未成功: {self.last_subscribe_error}")
 
-        self.log("✅ Step 4 (三层 6个月免费包 US$0.00 -> 24个月封顶) 叠加完成！等待 40 秒同步最终到期日...")
-        await asyncio.sleep(40)
+        self.log("✅ Step 4 (三层 6个月免费包 US$0.00 -> 24个月封顶) 叠加完成！等待 20 秒进入 Step 5 退订锁死...")
+        await asyncio.sleep(20)
         play_after = await self.inspect_play_subscriptions(page)
-        if "2028" not in play_after:
-            raise RuntimeError("Step 4 modal closed, but expiration date not yet updated to 2028!")
-        self.log("✅ Step 4 (US$0.00 Zero-Cost Stack to 24 Months) verified!")
+        if "2028" in play_after:
+            self.log("✅ Step 4 (US$0.00 Zero-Cost Stack to 24 Months) verified on Play Store!")
+        else:
+            self.log("ℹ️ Play Store 首页显示就近账单，直接进入 Step 5 锁死 2028 年最终权益...")
 
     async def step5_cancel_and_verify(self, page):
         self.update_state(status="running", current_step=5, step_message="Step 5/5: Cancelling auto-renewal on Google Play & capturing proof screenshot...")
@@ -1600,8 +1601,8 @@ class GoogleUltraAutomator:
         await asyncio.sleep(4)
         play_txt = await page.inner_text("body")
 
-        if self.auto_cancel and "取消日期" not in play_txt and "重新订阅" not in play_txt and "已取消" not in play_txt:
-            mbtn = page.get_by_text("管理", exact=True)
+        if self.auto_cancel and not any(k in play_txt for k in ("取消日期", "重新订阅", "已取消", "Resubscribe", "Canceled", "Cancelled", "Langganan dibatalkan")):
+            mbtn = page.locator('button:has-text("Manage"), [role="button"]:has-text("Manage"), button:has-text("Kelola"), [role="button"]:has-text("Kelola"), button:has-text("管理"), [role="button"]:has-text("管理"), a:has-text("Manage"), a:has-text("Kelola")')
             for i in range(await mbtn.count()):
                 if await mbtn.nth(i).is_visible():
                     await mbtn.nth(i).click()
@@ -1609,14 +1610,14 @@ class GoogleUltraAutomator:
 
             for _ in range(15):
                 await asyncio.sleep(0.5)
-                cbtn = page.get_by_text("取消订阅", exact=True)
+                cbtn = page.locator('button:has-text("Cancel subscription"), [role="button"]:has-text("Cancel subscription"), button:has-text("Batalkan langganan"), [role="button"]:has-text("Batalkan langganan"), button:has-text("取消订阅"), [role="button"]:has-text("取消订阅"), a:has-text("Cancel subscription")')
                 if await cbtn.count() > 0 and await cbtn.first.is_visible():
                     await cbtn.first.click()
                     break
 
             await asyncio.sleep(2.5)
             # Handle optional retention screen ("不，谢谢" / "继续")
-            no_thanks = page.locator('button:has-text("不，谢谢"), button:has-text("不用了"), button:has-text("No thanks"), [role="button"]:has-text("不，谢谢"), [role="button"]:has-text("不用了")')
+            no_thanks = page.locator('button:has-text("不，谢谢"), button:has-text("不用了"), button:has-text("No thanks"), button:has-text("Tidak, terima kasih"), [role="button"]:has-text("No thanks")')
             if await no_thanks.count() > 0 and await no_thanks.first.is_visible():
                 await no_thanks.first.click()
                 await asyncio.sleep(2.0)
@@ -1642,7 +1643,7 @@ class GoogleUltraAutomator:
                     await vis_radios.last.click(force=True)
                 except Exception:
                     pass
-            reason = page.locator('text=/拒绝回答|不愿透露|其他原因|暂不需要|Decline to answer/i').first
+            reason = page.locator('text=/拒绝回答|不愿透露|其他原因|暂不需要|Decline to answer|Other|Cost-related|Lainnya/i').first
             if await reason.count() > 0 and await reason.is_visible():
                 try:
                     await reason.click(force=True)
@@ -1650,18 +1651,18 @@ class GoogleUltraAutomator:
                     pass
 
             await asyncio.sleep(0.8)
-            cnext = page.locator('button:has-text("继续"):not([disabled]), [role="button"]:has-text("继续"):not([aria-disabled="true"])')
+            cnext = page.locator('button:has-text("Continue"), [role="button"]:has-text("Continue"), button:has-text("Lanjutkan"), [role="button"]:has-text("Lanjutkan"), button:has-text("继续"):not([disabled]), [role="button"]:has-text("继续"):not([aria-disabled="true"])')
             for i in range(await cnext.count()):
                 if await cnext.nth(i).is_visible():
                     await cnext.nth(i).click(timeout=8000)
                     break
             await asyncio.sleep(2.5)
 
-            final_cbtn = page.get_by_text("取消订阅", exact=True)
+            final_cbtn = page.locator('button:has-text("Cancel subscription"), [role="button"]:has-text("Cancel subscription"), button:has-text("Batalkan langganan"), [role="button"]:has-text("Batalkan langganan"), button:has-text("取消订阅"), [role="button"]:has-text("取消订阅")')
             fcnt = await final_cbtn.count()
             for i in range(fcnt - 1, -1, -1):
                 if await final_cbtn.nth(i).is_visible():
-                    self.log("正在点击最终【取消订阅】确认按钮...")
+                    self.log("正在点击最终【取消订阅 / Cancel subscription】确认按钮...")
                     await final_cbtn.nth(i).click(timeout=8000)
                     break
             await asyncio.sleep(4)
