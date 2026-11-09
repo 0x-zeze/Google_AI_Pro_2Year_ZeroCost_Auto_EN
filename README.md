@@ -35,8 +35,8 @@ This tool automates the full lifecycle for claiming and stacking Google AI Pro (
 ### Option B: Linux / macOS / Manual CLI
 ```bash
 # 1. Clone repository
-git clone https://github.com/0x-zeze/google-ai-pro-2year-auto.git
-cd google-ai-pro-2year-auto
+git clone https://github.com/0x-zeze/Google_AI_Pro_2Year_ZeroCost_Auto_EN.git
+cd Google_AI_Pro_2Year_ZeroCost_Auto_EN
 
 # 2. Setup virtual environment
 python3 -m venv venv
