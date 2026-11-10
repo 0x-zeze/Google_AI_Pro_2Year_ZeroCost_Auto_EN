@@ -1315,9 +1315,22 @@ class GoogleUltraAutomator:
                     await self.pass_reauth_on_page(pop_p)
 
             if "purchase/reauth" in (page.url or ""):
-                self.log("ℹ️ Main tab landed on purchase/reauth callback; re-opening plans modal with refreshed auth...")
-                post_click_err = "REAUTH_CALLBACK_RETRY"
-                break
+                self.log("ℹ️ Detected purchase/reauth callback — checking Google Play subscription status...")
+                await asyncio.sleep(3.5)
+                play_verify = await self.inspect_play_subscriptions(page)
+                self.log(f"[{step_tag}] Play Store status: {play_verify[:300]}")
+                if any(k in play_verify for k in ("2028", "May 2028", "5月")):
+                    self.log(f"✅ [{step_tag}] Subscription extended to 2028 verified on Play Store!")
+                    await self.save_screenshot(page, f"{step_tag}_verified_play")
+                    return True
+                if any(k in play_verify for k in ("2027", "Google AI", "Google One")) and "step2" in step_tag:
+                    self.log(f"✅ [{step_tag}] Layer 1 subscription verified on Play Store!")
+                    await self.save_screenshot(page, f"{step_tag}_verified_play")
+                    return True
+                self.log("ℹ️ Re-opening plans modal to finish checkout...")
+                await self.safe_goto(page, "https://one.google.com/plans?hl=en-US", timeout=40000)
+                await asyncio.sleep(3.0)
+                continue
 
             eacquire_present = False
             reauth_spinning = len(page.context.pages) > 1
