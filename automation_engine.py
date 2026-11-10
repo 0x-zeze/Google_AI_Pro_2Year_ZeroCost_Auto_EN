@@ -540,7 +540,7 @@ class GoogleUltraAutomator:
         fname = f"{self.account['id']}_{step_tag}_{int(time.time())}.png"
         fpath = os.path.join(SCREENSHOTS_DIR, fname)
         try:
-            await page.screenshot(path=fpath)
+            await page.screenshot(path=fpath, timeout=6000)
             self.update_state(last_screenshot=fname)
         except Exception as e:
             self.log(f"Screenshot save note: {e}")
@@ -1235,6 +1235,11 @@ class GoogleUltraAutomator:
             self.log(f"❌ [{step_tag}] {self.last_subscribe_error}")
             return False
 
+        if "not eligible" in clean_lower or "isn't available" in clean_lower or "not available" in clean_lower:
+            self.last_subscribe_error = f"Ineligible offer intercept: Google Play marked account not eligible ({clean_txt[:180]})"
+            self.log(f"❌ [{step_tag}] {self.last_subscribe_error}")
+            return False
+
         if expect_keywords:
             for kw in expect_keywords:
                 if kw not in clean_txt:
@@ -1502,10 +1507,9 @@ class GoogleUltraAutomator:
             sub_id = await self.get_current_sub_id(page)
 
         cfg_l1 = {
-            "name": "Step2_Layer1_12M_YTFree_ZeroCost",
+            "name": "Step2_Layer1_12M_ZeroCost",
             "full_items": [
                 [[PREFIX + "g1.2tb.ai.subs_variant", 21], None, None, None, 1, [TOK_PRO5TB_12M]],
-                [[PREFIX + "g1.youtube_premium_individual_add_on", 21], None, None, None, 1, [YT_FREE_TOK]],
             ],
             "ear8": [None, 5, None, None, None, [sub_id]] if sub_id else None,
         }
@@ -1536,10 +1540,9 @@ class GoogleUltraAutomator:
         sub_id = await self.get_current_sub_id(page)
 
         cfg_l2 = {
-            "name": "Step3_Layer2_6MSS_YTFree_ZeroCost",
+            "name": "Step3_Layer2_6MSS_ZeroCost",
             "full_items": [
                 [[PREFIX + "g1.2tb.ai.subs_variant", 21], None, None, None, 1, [TOK_PRO5TB_6M_SS]],
-                [[PREFIX + "g1.youtube_premium_individual_add_on", 21], None, None, None, 1, [YT_FREE_TOK]],
             ],
             "ear8": [None, 5, None, None, None, [sub_id]] if sub_id else None,
         }
@@ -1573,7 +1576,6 @@ class GoogleUltraAutomator:
                 "name": tag,
                 "full_items": [
                     [[PREFIX + "g1.2tb.ai.subs_variant", 21], None, None, None, 1, [tok]],
-                    [[PREFIX + "g1.youtube_premium_individual_add_on", 21], None, None, None, 1, [YT_FREE_TOK]],
                 ],
                 "ear8": [None, 5, None, None, None, [sub_id]] if sub_id else None,
             }
@@ -1815,6 +1817,8 @@ class GoogleUltraAutomator:
             err_msg = str(e)
             self.log(f"❌ Execution interrupted: {err_msg}")
             self.update_state(status="error", step_message=f"❌ Step {self.account.get('current_step', 1)} error: {err_msg[:120]}")
+            self.log("ℹ️ Keeping browser open for 6 seconds for manual inspection before recycling...")
+            await asyncio.sleep(6.0)
         finally:
             if self.proxy_bridge:
                 await self.proxy_bridge.stop()
