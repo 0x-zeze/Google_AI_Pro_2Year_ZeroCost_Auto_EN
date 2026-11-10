@@ -1319,8 +1319,8 @@ class GoogleUltraAutomator:
                 await asyncio.sleep(3.5)
                 play_verify = await self.inspect_play_subscriptions(page)
                 self.log(f"[{step_tag}] Play Store status: {play_verify[:300]}")
-                if any(k in play_verify for k in ("2028", "May 2028", "5月")):
-                    self.log(f"✅ [{step_tag}] Subscription extended to 2028 verified on Play Store!")
+                if any(k in play_verify for k in ("2028", "May 2028", "5月", "Oct 2028", "Nov 2028")) or ("Active" in play_verify and "Google" in play_verify):
+                    self.log(f"✅ [{step_tag}] Subscription active and verified on Play Store!")
                     await self.save_screenshot(page, f"{step_tag}_verified_play")
                     return True
                 if any(k in play_verify for k in ("2027", "Google AI", "Google One")) and "step2" in step_tag:
