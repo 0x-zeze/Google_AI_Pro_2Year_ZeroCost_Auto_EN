@@ -709,6 +709,11 @@ class GoogleUltraAutomator:
                         await asyncio.sleep(3.5)
                         continue
             elif ("challenge/dp" in page_obj.url or "challenge/az" in page_obj.url or "challenge/pk" in page_obj.url or "扫描二维码" in body) and "challenge/totp" not in page_obj.url:
+                has_totp_secret = bool((self.account.get("totp_secret") or "").strip())
+                if not has_totp_secret and ("challenge/dp" in page_obj.url or "challenge/az" in page_obj.url):
+                    self.log("📱 Detected Google Prompt on phone (challenge/dp) — please tap [Yes] on your device...")
+                    await asyncio.sleep(4.5)
+                    continue
                 totp_vis = page_obj.locator('input[type="tel"], input#totpPin, input[name="totpPin"]')
                 if await totp_vis.count() == 0 or not await totp_vis.first.is_visible():
                     try_other = page_obj.locator("text=/试试其他方式|尝试其他方式|Try another way/i").first
@@ -1235,9 +1240,9 @@ class GoogleUltraAutomator:
             self.log(f"❌ [{step_tag}] {self.last_subscribe_error}")
             return False
 
-        if "not eligible" in clean_lower or "isn't available" in clean_lower or "not available" in clean_lower:
-            self.last_subscribe_error = f"Ineligible offer intercept: Google Play marked account not eligible ({clean_txt[:180]})"
-            self.log(f"❌ [{step_tag}] {self.last_subscribe_error}")
+        if "isn't available" in clean_lower or "subscription not available" in clean_lower:
+            self.last_subscribe_error = f"Bundle item unavailable in current Play region ({clean_txt[:180]})"
+            self.log(f"⚠️ [{step_tag}] {self.last_subscribe_error}")
             return False
 
         if expect_keywords:
@@ -1298,21 +1303,37 @@ class GoogleUltraAutomator:
         for wait_i in range(35):
             await asyncio.sleep(2)
             if len(page.context.pages) > 1:
-                await self.pass_reauth_on_page(page.context.pages[-1])
+                pop_p = page.context.pages[-1]
+                pop_u = pop_p.url or ""
+                if "purchase/reauth" in pop_u:
+                    self.log("ℹ️ Re-auth popup completed (purchase/reauth), closing popup window...")
+                    try:
+                        await pop_p.close()
+                    except Exception:
+                        pass
+                else:
+                    await self.pass_reauth_on_page(pop_p)
+
+            if "purchase/reauth" in (page.url or ""):
+                self.log("ℹ️ Main tab landed on purchase/reauth callback; re-opening plans modal with refreshed auth...")
+                post_click_err = "REAUTH_CALLBACK_RETRY"
+                break
 
             eacquire_present = False
-            reauth_spinning = False
+            reauth_spinning = len(page.context.pages) > 1
             ordered_frames = [f for f in page.frames if f != page.main_frame] + [page.main_frame]
             for f2 in ordered_frames:
                 f2_url = f2.url or ""
                 if "eacquire" in f2_url:
                     eacquire_present = True
+                if "accounts.google.com" in f2_url or "challenge" in f2_url:
+                    reauth_spinning = True
                 try:
                     f2_txt = (await f2.inner_text("body", timeout=1500)).strip()
                 except Exception:
                     f2_txt = ""
 
-                if "验证是您本人" in f2_txt or "验证您的身份" in f2_txt or "Verify it's you" in f2_txt:
+                if any(k in f2_txt for k in ("验证是您本人", "验证您的身份", "Verify it's you", "2-Step Verification", "Check your")):
                     reauth_spinning = True
 
                 if "eacquire" in f2_url or "instrument" in f2_url or "challenge" in f2_url or "accounts.google.com" in f2_url or "reauth" in f2_url:
@@ -1473,6 +1494,10 @@ class GoogleUltraAutomator:
                 self.log(f"⚠️ [{step_tag}] 结账弹窗已关闭但未捕获到【已订阅/Play积分】明确成功标志，正在校验后台订阅状态...")
                 await asyncio.sleep(5.0)
                 await self.save_screenshot(page, f"{step_tag}_after_click")
+                play_verify = await self.inspect_play_subscriptions(page)
+                if any(k in play_verify for k in ("2028", "2027", "Google AI", "Google One", "Dec 2026", "12月")):
+                    self.log(f"✅ [{step_tag}] Play Store subscription verified active after modal closure!")
+                    return True
                 post_click_err = "结账弹窗已关闭但未出现【已订阅】确认标志，疑似后台卡单 (应收款)"
                 break
 
@@ -1507,13 +1532,24 @@ class GoogleUltraAutomator:
             sub_id = await self.get_current_sub_id(page)
 
         cfg_l1 = {
-            "name": "Step2_Layer1_12M_ZeroCost",
+            "name": "Step2_Layer1_12M_YTFree_ZeroCost",
             "full_items": [
                 [[PREFIX + "g1.2tb.ai.subs_variant", 21], None, None, None, 1, [TOK_PRO5TB_12M]],
+                [[PREFIX + "g1.youtube_premium_individual_add_on", 21], None, None, None, 1, [YT_FREE_TOK]],
             ],
             "ear8": [None, 5, None, None, None, [sub_id]] if sub_id else None,
         }
         ok = await self.open_and_click_subscribe(page, cfg_l1, "step2_layer1_12m")
+        if not ok and "unavailable" in (self.last_subscribe_error or "").lower():
+            self.log("ℹ️ YouTube Add-On unavailable in current region; falling back to standalone 12M Google AI Pro item...")
+            cfg_l1_solo = {
+                "name": "Step2_Layer1_12M_Solo_ZeroCost",
+                "full_items": [
+                    [[PREFIX + "g1.2tb.ai.subs_variant", 21], None, None, None, 1, [TOK_PRO5TB_12M]],
+                ],
+                "ear8": [None, 5, None, None, None, [sub_id]] if sub_id else None,
+            }
+            ok = await self.open_and_click_subscribe(page, cfg_l1_solo, "step2_layer1_12m")
         if not ok:
             self.log("⚠️ Step 2 首次触发未完成结账，正在等待 3 秒后进行重试 (2/2)...")
             await asyncio.sleep(3.0)
@@ -1540,9 +1576,10 @@ class GoogleUltraAutomator:
         sub_id = await self.get_current_sub_id(page)
 
         cfg_l2 = {
-            "name": "Step3_Layer2_6MSS_ZeroCost",
+            "name": "Step3_Layer2_6MSS_YTFree_ZeroCost",
             "full_items": [
                 [[PREFIX + "g1.2tb.ai.subs_variant", 21], None, None, None, 1, [TOK_PRO5TB_6M_SS]],
+                [[PREFIX + "g1.youtube_premium_individual_add_on", 21], None, None, None, 1, [YT_FREE_TOK]],
             ],
             "ear8": [None, 5, None, None, None, [sub_id]] if sub_id else None,
         }
@@ -1576,6 +1613,7 @@ class GoogleUltraAutomator:
                 "name": tag,
                 "full_items": [
                     [[PREFIX + "g1.2tb.ai.subs_variant", 21], None, None, None, 1, [tok]],
+                    [[PREFIX + "g1.youtube_premium_individual_add_on", 21], None, None, None, 1, [YT_FREE_TOK]],
                 ],
                 "ear8": [None, 5, None, None, None, [sub_id]] if sub_id else None,
             }
